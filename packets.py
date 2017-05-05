@@ -2,7 +2,17 @@ import ipaddress
 import struct
 
 
+def build_domain(name):
+    return b''.join(map(lambda part: struct.pack(">B", len(part)) + part.encode('utf-8'),
+                 name.split('.')))
+
+
 class DNS_Packet:
+    MESSAGE_TYPE = {'QUERY': 0, 'RESPONSE': 1}
+    OPCODES = {'QUERY': 0, 'IQUERY': 1, 'STATUS': 2}
+    RCODES = {'No error': 0, 'Format error': 1, 'Server failure': 2, 'Name Error': 3,
+              'Not Implemented': 4, 'Refused': 5}
+
     def __init__(self, p_id, flags, questions, answers,
                  authority, additional):
         self.id = p_id
@@ -11,6 +21,28 @@ class DNS_Packet:
         self.answers = answers
         self.authority = authority
         self.additional = additional
+
+    @classmethod
+    def build_request(cls, resolve_name, dns_type=1, dns_class=1):
+        import random
+        base_type, domain = DNS_Packet.__convert_domain_name__(resolve_name)
+
+        if dns_type:
+            pass  # put here back converting to dns_type : from string name get number
+        else:
+            dns_type = 1
+
+        query = Query(domain, dns_type, dns_class)
+        flags = Flags(DNS_Packet.MESSAGE_TYPE['QUERY'], DNS_Packet.OPCODES['QUERY'],
+                      0, 0, 0, 0, DNS_Packet.RCODES['No error'])
+        return DNS_Packet(random.randint(0, 1 << 16), flags, [query], [], [], [])
+
+    @staticmethod
+    def __convert_domain_name__(resolve_name):
+        import re
+        if re.match(r'\d+\.\d+\.\d+\.\d+', resolve_name):
+            return 'PTR', '.'.join(reversed(resolve_name.split('.'))) + ".IN-ADDR.ARPA."
+        return 'A', resolve_name if resolve_name[-1] == '.' else resolve_name + '.'
 
     @classmethod
     def parse(cls, raw_data):
@@ -33,6 +65,18 @@ class DNS_Packet:
                                                            offset,
                                                            additional_count)
         return DNS_Packet(p_id, flags, questions, answers, authority, additional)
+
+    def to_raw_packet(self):
+        raw_flags = self.flags.to_raw_bytes()
+        header = struct.pack(">HHHHHH", self.id, raw_flags, len(self.questions),
+                             len(self.answers), len(self.authority), len(self.additional))
+
+        questions = b''.join(map(lambda qe: qe.build(), self.questions))
+        answers = b''.join(map(lambda rr: rr.build(), self.answers))
+        authority = b''.join(map(lambda rr: rr.build(), self.authority))
+        additional = b''.join(map(lambda rr: rr.build(), self.additional))
+
+        return header + questions + answers + authority + additional
 
     @staticmethod
     def _parse_with_offset(cls, raw_data, offset, count):
@@ -63,6 +107,10 @@ class Flags:
         RA = raw_flags >> 7 & 0x1
         rcode = raw_flags & 0xF
         return Flags(QR, opcode, AA, TC, RD, RA, rcode)
+
+    def to_raw_bytes(self):
+        return self.QR << 15 | self.opcode << 11 | self.AA << 10 | self.TC << 9 | \
+               self.RD << 8 | self.RA << 7 | self.rcode
 
 
 class Query:
@@ -104,6 +152,9 @@ class Query:
         q_class = cls.query_class[bin_class]
         return Query(name, q_type, q_class), pointer + 4
 
+    def build(self):
+        return build_domain(self.name) + struct.pack(">HH", self.type, self.q_class)
+
     @staticmethod
     def to_ascii(data):
         # return ''.join(chr(elem) for elem in data)
@@ -119,9 +170,14 @@ class ResourceRecord:
         self.rdlength = rdlength
         self.rdata = rdata
 
+    def build(self):
+        return build_domain(self.domain) + \
+               struct.pack(
+                   ">HHIH", self.dns_type, self.dns_class, self.ttl, self.rdlength)
+
     @classmethod
     def parse(cls, raw_data, offset):
-        domain, offset = get_domain(raw_data, offset)  # TODO
+        domain, offset = get_domain(raw_data, offset)
         dns_type, dns_class, ttl, rdlength = struct.unpack(">HHIH",
                                                            raw_data[offset: offset + 10])
         if dns_type in Query.query_type:
@@ -133,6 +189,7 @@ class ResourceRecord:
 
         return ResourceRecord(domain, dns_type, dns_class, ttl, rdlength, rdata), \
                offset + 10 + rdlength
+
 
     @classmethod
     def get_rdata(cls, raw_data, offset, length, key):
@@ -160,8 +217,8 @@ class ResourceRecord:
 
     @classmethod
     def soa_record_function(cls, raw_data, offset, length):
-        mname, offset = get_domain(raw_data, offset)  # TODO
-        rname, offset = get_domain(raw_data, offset)  # TODO
+        mname, offset = get_domain(raw_data, offset)
+        rname, offset = get_domain(raw_data, offset)
         serial, refresh, retry, expire, minimum = struct.unpack(">5I",
                                                                 raw_data[
                                                                 offset:offset + 20])
@@ -169,6 +226,7 @@ class ResourceRecord:
         return [('MNAME', mname), ('RNAME', rname), ('SERIAL', serial),
                 ('REFRESH', refresh), ('RETRY', retry),
                 ('EXPIRE', expire), ('MINIMUM', minimum)]
+
 
 ResourceRecord.association_functions = {
     "A": ResourceRecord.ipv4_function,
@@ -179,6 +237,7 @@ ResourceRecord.association_functions = {
     "MX": ResourceRecord.mail_record_function,
     "SOA": ResourceRecord.soa_record_function
 }
+
 
 #
 # def get_domain(raw_data, offset):
@@ -218,4 +277,3 @@ def get_domain(data, offset):
             offset += length
         else:
             return domain, offset_to_return if shortened else offset
-
