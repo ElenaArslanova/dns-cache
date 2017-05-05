@@ -38,7 +38,7 @@ class DNS_Packet:
     def _parse_with_offset(cls, raw_data, offset, count):
         result = []
         for i in range(count):
-            parsed, offset = cls.parse(raw_data, count)
+            parsed, offset = cls.parse(raw_data, offset)
             result.append(parsed)
         return result, offset
 
@@ -91,21 +91,23 @@ class Query:
 
     @classmethod
     def parse(cls, raw_query, offset):
-        pointer = offset
-        res = []
-        while raw_query[pointer] != 0:
-            count = raw_query[pointer]
-            res.append(cls.to_ascii(raw_query[pointer + 1:pointer + count + 1]))
-            pointer += count + 1
-        name = '.'.join(res)
-        bin_type, bin_class = struct.unpack(">HH", raw_query[pointer + 1: pointer + 3])
+        # pointer = offset
+        # res = []
+        # while raw_query[pointer] != 0:
+        #     count = raw_query[pointer]
+        #     res.append(cls.to_ascii(raw_query[pointer + 1:pointer + count + 1]))
+        #     pointer += count + 1
+        # name = '.'.join(res)
+        name, pointer = get_domain(raw_query, offset)
+        bin_type, bin_class = struct.unpack(">HH", raw_query[pointer: pointer + 4])
         q_type = cls.query_type[bin_type]
         q_class = cls.query_class[bin_class]
-        return Query(name, q_type, q_class), pointer + 3
+        return Query(name, q_type, q_class), pointer + 4
 
     @staticmethod
     def to_ascii(data):
-        return ''.join(elem.decode('ascii') for elem in data)
+        # return ''.join(chr(elem) for elem in data)
+        return data.decode()
 
 
 class ResourceRecord:
@@ -141,7 +143,7 @@ class ResourceRecord:
 
     @classmethod
     def ipv4_function(cls, raw_data, offset, length):
-        return str(ipaddress.IPv6Address(raw_data[offset:offset + length]))
+        return str(ipaddress.IPv4Address(raw_data[offset:offset + length]))
 
     @classmethod
     def ipv6_function(cls, raw_data, offset, length):
@@ -168,12 +170,52 @@ class ResourceRecord:
                 ('REFRESH', refresh), ('RETRY', retry),
                 ('EXPIRE', expire), ('MINIMUM', minimum)]
 
-    association_functions = {
-        "A": ipv4_function,
-        "AAAA": ipv6_function,
-        "PTR": domain_name,
-        "NS": domain_name,
-        "CNAME": domain_name,
-        "MX": mail_record_function,
-        "SOA": soa_record_function
-    }
+ResourceRecord.association_functions = {
+    "A": ResourceRecord.ipv4_function,
+    "AAAA": ResourceRecord.ipv6_function,
+    "PTR": ResourceRecord.domain_name,
+    "NS": ResourceRecord.domain_name,
+    "CNAME": ResourceRecord.domain_name,
+    "MX": ResourceRecord.mail_record_function,
+    "SOA": ResourceRecord.soa_record_function
+}
+
+#
+# def get_domain(raw_data, offset):
+#     pointer, shortened_pointer = offset
+#     shortened = False
+#     res = []
+#     while raw_data[pointer] != 0:
+#         count = raw_data[pointer]
+#         pointer += 1
+#         if count & 0xC0 == 0xC0:
+#             if not shortened:
+#                 shortened_pointer += 1
+#             pointer = ((count & (~0xC0)) << 8) + raw_data[pointer]
+#             shortened = True
+#             continue
+#         res.append(raw_data[pointer: pointer + count].decode())
+#         pointer += count
+#     pointer += 1
+#     name = '.'.join(res)
+#     return name, shortened_pointer if shortened else pointer
+
+
+def get_domain(data, offset):
+    domain = ''
+    offset_to_return = offset
+    shortened = False
+    while True:
+        length = data[offset]
+        offset += 1
+        if length & 0xC0 == 0xC0:
+            if not shortened:
+                offset_to_return = offset + 1
+            offset = ((length & (~0xC0)) << 8) + data[offset]
+            shortened = True
+        elif length & 0xC0 == 0 and length > 0:
+            domain += data[offset: offset + length].decode('utf-8') + '.'
+            offset += length
+        else:
+            return domain, offset_to_return if shortened else offset
+
