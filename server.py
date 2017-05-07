@@ -25,7 +25,7 @@ class Dns_Server:
             try:
                 socket.gethostbyname(forwarder)
             except socket.gaierror:
-                print("Not existing {} or not found", forwarder)
+                print("Not existing {} or not found".format(forwarder))
                 sys.exit()
             else:
                 self.forwarder = forwarder
@@ -37,8 +37,17 @@ class Dns_Server:
         pass
         return self
 
+    def __check_all_set_up__(self):
+        values = self.__dict__
+        for k, v in values.items():
+            if v is None:
+                raise Exception("{} is not defined".format(k))
+
     def launch(self):
+        self.__check_all_set_up__()
         pass
 
-a = Dns_Server("Hello").set_up_address().set_up_port().set_up_forwarder("google.com")
+Dns_Server().__check_all_set_up__()
+
+# a = Dns_Server("Hello").set_up_address().set_up_port().set_up_forwarder("google.com")
 
