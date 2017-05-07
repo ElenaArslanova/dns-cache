@@ -3,7 +3,8 @@ import sys
 from cache import Dns_Cache
 from multiprocessing.dummy import Pool as ThreadPool
 from select import select
-
+from threading import Lock
+from packets import DNS_Packet
 
 class Dns_Server:
     def __init__(self, hello_word="Hello! Ready for a job"):
@@ -13,6 +14,7 @@ class Dns_Server:
         self.port = 53
         self.forwarder = None
         self.pool = None
+        self.lock = Lock()
 
     def set_up_address(self, address='localhost'):
         self.address = address
@@ -62,13 +64,18 @@ class Dns_Server:
         else:
             return True
 
-    @classmethod
-    def client_worker(cls, request):
+    def client_worker(self, request):
         """
         a function to work with client - form answering packet and send it
-        :param request: string domain name: google.com, www.vk.com or common
+        :param
+        request is a Tuple : binary_data and address
+        binary_data converted to string domain name: google.com, www.vk.com or common
+        and address - sending dns reply to a client
         """
-        pass
+        bin_data, address = request
+        question = DNS_Packet.parse(bin_data)
+        
+
 
     def launch(self):
         self.__check_all_set_up__()
@@ -79,11 +86,10 @@ class Dns_Server:
             reading, _, _ = select([connection], [], [])
             if reading:
                 try:
-                    bin_data, address = connection.recvfrom(512)
+                    question = connection.recvfrom(512)
                 except socket.error:
                     print("Couldn't receive from client")
-
-
+                else:
+                    self.pool.apply_async(self.client_worker, args=(question))
 
 # a = Dns_Server("Hello").set_up_address().set_up_port().set_up_forwarder("google.com")
-
