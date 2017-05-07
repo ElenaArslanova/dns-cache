@@ -1,4 +1,3 @@
-import shelve
 import abc
 
 class_names = {
