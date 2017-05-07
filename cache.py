@@ -1,5 +1,6 @@
 import shelve
 import abc
+
 class_names = {
     'A',
     'NS',
@@ -33,7 +34,7 @@ class AbstractCacheOperations:
         pass
 
     @abc.abstractmethod
-    def insert_domain_name_class(self, key, class_name, record_name):
+    def insert_domain_name_class(self, key, class_name):
         # put a new resource record to a domain's name correct class
         pass
 
@@ -51,17 +52,29 @@ class Dns_Cache(AbstractCacheOperations):
         self.cache = dict()
 
     def update_domain_name_class(self, key, class_name):
+        # cleaning records which have old ttl
         pass
 
     def create_domain_name(self, key):
-        pass
+        if self.check_if_domain_exist(key):
+            return False
+        self.cache[key] = {}
+        return True
 
     def get_domain_name_classes(self, key):
-        pass
+        if not self.check_if_domain_exist(key):
+            raise KeyError("No such domain record - {}".format(key))
+        return self.cache[key]
 
-    def insert_domain_name_class(self, key, class_name, record_name):
-        pass
+    def insert_domain_name_class(self, key, class_name):
+        if not self.check_if_domain_exist(key):
+            raise KeyError("No such domain name record - {}".format(key))
+        classes = self.cache[key]
+        if class_name not in classes:
+            # we provide a list, however it is optional and maybe set is okay
+            classes[class_name] = []
+            return True
+        return False
 
     def check_if_domain_exist(self, key):
-        pass
-
+        return True if key in self.cache else False
