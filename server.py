@@ -6,6 +6,7 @@ from select import select
 from threading import Lock
 from packets import DNS_Packet
 
+
 class Dns_Server:
     def __init__(self, hello_word="Hello! Ready for a job"):
         self.welcome = hello_word
@@ -73,8 +74,30 @@ class Dns_Server:
         and address - sending dns reply to a client
         """
         bin_data, address = request
-        question = DNS_Packet.parse(bin_data)
-        
+        query = DNS_Packet.parse(bin_data)
+        for question in query.questions:
+            pass
+
+    def ask_forwarder(self, query):
+        results = []
+        raw = DNS_Packet.build_request(resolve_name=query.name,
+                                       dns_type=query.query_type).to_raw_packet()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.sendto(raw, (self.forwarder, 53))
+            while True:
+                read, _, _ = select([sock], [], [], 1)
+                if read:
+                    raw_data = sock.recv(512)
+                    converted_pack = DNS_Packet.parse(raw_data)
+                    if converted_pack.flags.TC:
+                        results.append(converted_pack)
+                        continue
+                    else:
+                        break
+                else:
+                    break
+        return results
+
 
 
     def launch(self):
@@ -83,7 +106,7 @@ class Dns_Server:
         connection = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.__try_bind_connection__(connection)
         while True:
-            reading, _, _ = select([connection], [], [])
+            reading, _, _ = select([connection], [], [],1)
             if reading:
                 try:
                     question = connection.recvfrom(512)
