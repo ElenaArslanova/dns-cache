@@ -1,16 +1,18 @@
 import abc
+import time
+from collections import namedtuple
 
-class_names = {
-    'A',
-    'NS',
-    'CNAME',
-    'SOA',
-    'PTR',
-    'HINFO',
-    'MX',
-    'AAAA',
-    'AXFR',
-    '*'
+dns_types = {
+    1: 'A',
+    2: 'NS',
+    5: 'CNAME',
+    6: 'SOA',
+    12: 'PTR',
+    13: 'HINFO',
+    15: 'MX',
+    28: 'AAAA',
+    252: 'AXFR',
+    255: '*'
 }
 
 
@@ -19,7 +21,7 @@ class AbstractCacheOperations:
         self.name = name
 
     @abc.abstractmethod
-    def check_if_domain_exist(self, query):
+    def domain_cached(self, query):
         # just a guarantee wrapper
         pass
 
@@ -45,6 +47,8 @@ class AbstractCacheOperations:
 
 
 class Dns_Cache(AbstractCacheOperations):
+    CacheRecord = namedtuple('CacheRecord', 'record time')
+
     def __init__(self, database_name):
         super().__init__(database_name)
         # simple one session implementation using pure python dictionary
@@ -52,21 +56,27 @@ class Dns_Cache(AbstractCacheOperations):
 
     def update_domain_name_class(self, query):
         # cleaning records which have old ttl
-        pass
+        if self.domain_cached(query):
+            for type in self.cache[query.name]:
+                valid_records = []
+                for cache_record in self.cache[query.name][type]:
+                    time_elapsed = round(time.time() - cache_record.time)
+                    cache_record.record.ttl -= time_elapsed
+                    if cache_record.record.ttl > 0:
+                        valid_records.append(cache_record)
+                self.cache[query.name][type] = valid_records
 
     def create_domain_name(self, query):
-        if self.check_if_domain_exist(query):
-            return False
-        self.cache[query.name] = {}
-        return True
+        if not self.domain_cached(query):
+            self.cache[query.name] = {}
 
     def get_domain_name_classes(self, query):
-        if not self.check_if_domain_exist(query):
+        if not self.domain_cached(query):
             raise KeyError("No such domain record - {}".format(query.name))
         return self.cache[query.name]
 
     def insert_domain_name_class(self, query):
-        if not self.check_if_domain_exist(query):
+        if not self.domain_cached(query):
             raise KeyError("No such domain name record - {}".format(query.name))
         classes = self.cache[query.name]
         if query.query_type not in classes:
@@ -78,15 +88,13 @@ class Dns_Cache(AbstractCacheOperations):
     # TODO
     # a function, where cache decide - has it or not this specific query in
     # + updates (cleaning cache)
-    def evaluate_query(self, query):
-        if not self.check_if_domain_exist(query):
-            return False
-        if query.query_type in self.cache[query.name]:
-            available_records = self.cache[query.name][query.query_type]
-            if len(available_records) == 0:
-                return False
-
-            pass
+    def process_query(self, query):
+        self.update_domain_name_class(query)
+        if not self.domain_cached(query):
+            return None
+        available_records = self.cache[query.name][query.type]
+        if available_records:
+            return [record.record for record in available_records]
 
     # TODO
     # main function where all logic of adding must be implemented
@@ -94,9 +102,26 @@ class Dns_Cache(AbstractCacheOperations):
         answers = answer_packet.answers
         authority = answer_packet.authority
         additional = answer_packet.additional
+        domain = answer_packet.questions[0].name
+        for records in [answers, authority, additional]:
+            self._insert_records(records, domain)
 
+    def domain_cached(self, query):
+        return query.name in self.cache
 
+    def _insert_records(self, records, domain):
+        for record in records:
+            cache_record = self.CacheRecord(record, time.time())
+            if not domain in self.cache:
+                self._initialize_domain(domain)
+            self.cache[domain][record.dns_type].append(cache_record)
 
+            if not record.domain in self.cache:
+                self.cache[record.domain] = {}
+            self.cache[record.domain][record.dns_type] = [cache_record]
 
-    def check_if_domain_exist(self, query):
-        return True if query.name in self.cache else False
+    def _initialize_domain(self, domain):
+        self.cache[domain] = {}
+        for type in dns_types:
+            self.cache[domain][type] = []
+
