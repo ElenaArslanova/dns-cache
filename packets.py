@@ -6,6 +6,26 @@ def build_domain(name):
     return b''.join(map(lambda part: struct.pack(">B", len(part)) + part.encode('utf-8'),
                  name.split('.')))
 
+dns_types = {
+    1: 'A',
+    2: 'NS',
+    5: 'CNAME',
+    6: 'SOA',
+    12: 'PTR',
+    13: 'HINFO',
+    15: 'MX',
+    28: 'AAAA',
+    252: 'AXFR',
+    255: '*'
+}
+
+dns_classes = {
+    1: 'IN',
+    255: 'ANY'
+}
+
+to_dns_types = dict((v, k) for k, v in dns_types.items())
+to_dns_classes = dict((v, k) for k, v in dns_classes.items())
 
 class DNS_Packet:
     MESSAGE_TYPE = {'QUERY': 0, 'RESPONSE': 1}
@@ -26,11 +46,6 @@ class DNS_Packet:
     def build_request(cls, resolve_name, dns_type=1, dns_class=1):
         import random
         base_type, domain = DNS_Packet.__convert_domain_name__(resolve_name)
-
-        if dns_type:
-            pass  # put here back converting to dns_type : from string name get number
-        else:
-            dns_type = 1
 
         query = Query(domain, dns_type, dns_class)
         flags = Flags(DNS_Packet.MESSAGE_TYPE['QUERY'], DNS_Packet.OPCODES['QUERY'],
@@ -114,24 +129,6 @@ class Flags:
 
 
 class Query:
-    query_type = {
-        1: 'A',
-        2: 'NS',
-        5: 'CNAME',
-        6: 'SOA',
-        12: 'PTR',
-        13: 'HINFO',
-        15: 'MX',
-        28: 'AAAA',
-        252: 'AXFR',
-        255: '*'
-    }
-
-    query_class = {
-        1: 'IN',
-        255: 'ANY'
-    }
-
     def __init__(self, name, q_type, q_class):
         self.name = name
         self.type = q_type
@@ -147,13 +144,12 @@ class Query:
         #     pointer += count + 1
         # name = '.'.join(res)
         name, pointer = get_domain(raw_query, offset)
-        bin_type, bin_class = struct.unpack(">HH", raw_query[pointer: pointer + 4])
-        q_type = cls.query_type[bin_type]
-        q_class = cls.query_class[bin_class]
+        q_type, q_class = struct.unpack(">HH", raw_query[pointer: pointer + 4])
         return Query(name, q_type, q_class), pointer + 4
 
     def build(self):
-        return build_domain(self.name) + struct.pack(">HH", self.type, self.q_class)
+        return build_domain(self.name) + struct.pack(">HH", self.type,
+                                                     self.q_class)
 
     @staticmethod
     def to_ascii(data):
@@ -171,17 +167,17 @@ class ResourceRecord:
         self.rdata = rdata
 
     def build(self):
-        return build_domain(self.domain) + \
-               struct.pack(
-                   ">HHIH", self.dns_type, self.dns_class, self.ttl, self.rdlength)
+        return build_domain(self.domain) + struct.pack(
+                   ">HHIH", self.dns_type, self.dns_class, self.ttl,
+                    self.rdlength)
 
     @classmethod
     def parse(cls, raw_data, offset):
         domain, offset = get_domain(raw_data, offset)
         dns_type, dns_class, ttl, rdlength = struct.unpack(">HHIH",
                                                            raw_data[offset: offset + 10])
-        if dns_type in Query.query_type:
-            key = Query.query_type[dns_type]
+        if dns_type in dns_types:
+            key = dns_types[dns_type]
         else:
             key = "Not in list"
 
