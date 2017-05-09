@@ -52,6 +52,13 @@ class DNS_Packet:
                       0, 0, 0, 0, DNS_Packet.RCODES['No error'])
         return DNS_Packet(random.randint(0, 1 << 16), flags, [query], [], [], [])
 
+    @classmethod
+    def build_reply(cls, query, answers):
+        flags = Flags(DNS_Packet.MESSAGE_TYPE['RESPONSE'],
+                      query.flags.opcode,
+                      0, 0, 0, 0, DNS_Packet.RCODES['No error'])
+        return DNS_Packet(query.id, flags, query.questions, answers, [], [])
+
     @staticmethod
     def __convert_domain_name__(resolve_name):
         import re
