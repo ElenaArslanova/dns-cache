@@ -53,10 +53,10 @@ class DNS_Packet:
         return DNS_Packet(random.randint(0, 1 << 16), flags, [query], [], [], [])
 
     @classmethod
-    def build_reply(cls, query, answers):
+    def build_reply(cls, query, answers, rcode='No error'):
         flags = Flags(DNS_Packet.MESSAGE_TYPE['RESPONSE'],
                       query.flags.opcode,
-                      0, 0, 0, 0, DNS_Packet.RCODES['No error'])
+                      0, 0, query.flags.RD, 0, DNS_Packet.RCODES[rcode])
         return DNS_Packet(query.id, flags, query.questions, answers, [], [])
 
     @staticmethod
@@ -165,18 +165,19 @@ class Query:
 
 
 class ResourceRecord:
-    def __init__(self, domain, dns_type, dns_class, ttl, rdlength, rdata):
+    def __init__(self, domain, dns_type, dns_class, ttl, rdlength, rdata, raw_rdata=None):
         self.domain = domain
         self.dns_type = dns_type
         self.dns_class = dns_class
         self.ttl = ttl
         self.rdlength = rdlength
         self.rdata = rdata
+        self.raw_rdata = raw_rdata
 
     def build(self):
         return build_domain(self.domain) + struct.pack(
                    ">HHIH", self.dns_type, self.dns_class, self.ttl,
-                    self.rdlength)
+                    self.rdlength) + self.raw_rdata if self.raw_rdata else b''
 
     @classmethod
     def parse(cls, raw_data, offset):
@@ -189,8 +190,9 @@ class ResourceRecord:
             key = "Not in list"
 
         rdata = cls.get_rdata(raw_data, offset + 10, rdlength, key)
+        raw_rdata = raw_data[offset + 10: offset + 10 + rdlength]
 
-        return ResourceRecord(domain, dns_type, dns_class, ttl, rdlength, rdata), \
+        return ResourceRecord(domain, dns_type, dns_class, ttl, rdlength, rdata, raw_rdata), \
                offset + 10 + rdlength
 
 
