@@ -19,7 +19,7 @@ class Dns_Server:
         self.port = 53
         self.forwarder = None
         self.pool = None
-        self.lock = Lock()
+        self._lock = Lock()
 
     def set_up_address(self, address='localhost'):
         self.address = address
@@ -69,7 +69,7 @@ class Dns_Server:
         else:
             return True
 
-    def client_worker(self, request):
+    def client_worker(self, request, connection):
         """
         a function to work with client - form answering packet and send it
         :param
@@ -81,24 +81,30 @@ class Dns_Server:
         query = DNS_Packet.parse(bin_data)
         results = []
         for question in query.questions:
-            if self._is_local_query(question):
-                return
             cache_result = self.cache.process_query(question)
             if not cache_result:
                 replies = self.ask_forwarder(question)
-                for reply in replies:
-                    self.cache.insert_packet_data(reply)
-            cache_result = self.cache.process_query(question)
+                self._process_forwarder_replies(replies, query, connection, address)
+                return
+            cache_result = self.cache.process_query(question) # server failure if None
             results.extend(cache_result)
-        reply = DNS_Packet.build_reply(query, results).to_raw_packet()
-        connection = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        connection.sendto(reply, address)
+        reply = DNS_Packet.build_reply(query, results) # add additional and authority
+        connection.sendto(reply.to_raw_packet(), address)
 
-    def _is_local_query(self, query):
-        ip_match = self.IP.match(query.name)
-        if ip_match:
-            address = '.'.join(reversed(ip_match.groups()))
-            return ipaddress.ip_address(address).is_private
+    def _insert_reply_into_cache(self, reply):
+        with self._lock:
+             self.cache.insert_packet_data(reply)
+
+    def _without_errors(self, forwarder_reply):
+        return forwarder_reply.flags.opcode == DNS_Packet.RCODES['No error']
+
+    def _process_forwarder_replies(self, replies, query, connection, address):
+        for reply in replies:
+            reply.id = query.id
+            connection.sendto(reply.to_raw_packet(), address)  # probably with lock
+            if self._without_errors(reply):
+                self._insert_reply_into_cache(reply)
+
 
     def ask_forwarder(self, query):
         results = []
@@ -135,8 +141,8 @@ class Dns_Server:
                 except socket.error:
                     print("Couldn't receive from client")
                 else:
-                    self.client_worker(question)
-                    # self.pool.apply_async(self.client_worker, args=[question])
+                    self.client_worker(question, connection)
+                    # self.pool.apply_async(self.client_worker, args=[question, connection])
 
 if __name__ == '__main__':
     a = Dns_Server("Hello").set_up_address().set_up_port().set_up_forwarder("8.8.8.8")
