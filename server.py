@@ -79,16 +79,19 @@ class Dns_Server:
         """
         bin_data, address = request
         query = DNS_Packet.parse(bin_data)
-        results = []
+        answers = []
+        authority = []
+        additional = []
         for question in query.questions:
-            cache_result = self.cache.process_query(question)
+            cache_result, c_authority, c_additional = self.cache.process_query(question)
             if not cache_result:
                 replies = self.ask_forwarder(question)
                 self._process_forwarder_replies(replies, query, connection, address)
                 return
-            cache_result = self.cache.process_query(question) # server failure if None
-            results.extend(cache_result)
-        reply = DNS_Packet.build_reply(query, results) # add additional and authority
+            answers.extend(cache_result)
+            authority.extend(c_authority)
+            additional.extend(c_additional)
+        reply = DNS_Packet.build_reply(query, answers, authority, additional)
         connection.sendto(reply.to_raw_packet(), address)
 
     def _insert_reply_into_cache(self, reply):
@@ -96,7 +99,7 @@ class Dns_Server:
              self.cache.insert_packet_data(reply)
 
     def _without_errors(self, forwarder_reply):
-        return forwarder_reply.flags.opcode == DNS_Packet.RCODES['No error']
+        return forwarder_reply.flags.rcode == DNS_Packet.RCODES['No error']
 
     def _process_forwarder_replies(self, replies, query, connection, address):
         for reply in replies:
