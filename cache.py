@@ -27,23 +27,18 @@ class AbstractCacheOperations:
         pass
 
     @abc.abstractmethod
-    def get_domain_name_classes(self, query):
-        pass
-
-    @abc.abstractmethod
     def update_domain_name_class(self, query):
         # look through class name records for a class and than check each record ttl
         pass
 
     @abc.abstractmethod
-    def insert_domain_name_class(self, query):
-        # put a new resource record to a domain's name correct class
+    def insert_packet_data(self, answer_packet):
+        # cache forwarder's replies
         pass
 
     @abc.abstractmethod
-    def create_domain_name(self, query):
-        # probably a trash method, but can be useful if domain is not valid and we now it
-        # by asking server, for example
+    def process_query(self, query):
+        # find cached replies
         pass
 
 
@@ -65,24 +60,6 @@ class Dns_Cache(AbstractCacheOperations):
                         valid_records.add(cache_record)
                 self.cache[query.name][type] = valid_records
 
-    def create_domain_name(self, query):
-        if not self.domain_cached(query):
-            self.cache[query.name] = {}
-
-    def get_domain_name_classes(self, query):
-        if not self.domain_cached(query):
-            raise KeyError("No such domain record - {}".format(query.name))
-        return self.cache[query.name]
-
-    def insert_domain_name_class(self, query):
-        if not self.domain_cached(query):
-            raise KeyError("No such domain name record - {}".format(query.name))
-        classes = self.cache[query.name]
-        if query.query_type not in classes:
-            # we provide a list, however it is optional and maybe set is okay
-            classes[query.type] = []
-            return True
-        return False
 
     def process_query(self, query):
         self.update_domain_name_class(query)
