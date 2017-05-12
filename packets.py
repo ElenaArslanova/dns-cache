@@ -175,6 +175,16 @@ class ResourceRecord:
         self.rdata = rdata
         self.raw_rdata = raw_rdata
 
+    def __hash__(self):
+        return hash((self.domain, self.dns_type, self.dns_class, self.raw_rdata))
+
+    def __eq__(self, other):
+        if isinstance(other, ResourceRecord):
+            return (self.domain, self.dns_type,
+                    self.dns_class, self.raw_rdata) == (other.domain,
+                            other.dns_type, other.dns_class, other.raw_rdata)
+        return False
+
     def build(self):
         return build_domain(self.domain) + struct.pack(
                    ">HHIH", self.dns_type, self.dns_class, self.ttl,
