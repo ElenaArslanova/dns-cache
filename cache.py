@@ -76,7 +76,8 @@ class Dns_Cache(AbstractCacheOperations):
 
     @staticmethod
     def _extract_records(cache_records):
-        return [record.record for record in cache_records]
+        return sorted([record.record for record in cache_records],
+                      key=lambda r: r.domain)
 
     def insert_packet_data(self, answer_packet):
         answers = answer_packet.answers
