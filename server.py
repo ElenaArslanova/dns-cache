@@ -142,8 +142,7 @@ class DnsServer:
                 except socket.error:
                     print("Couldn't receive from client")
                 else:
-                    self.client_worker(question, connection)
-                    # self.pool.apply_async(self.client_worker, args=[question, connection])
+                    self.pool.apply_async(self.client_worker, args=[question, connection])
 
 
 def create_parser():
