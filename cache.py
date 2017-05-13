@@ -84,6 +84,8 @@ class Dns_Cache(AbstractCacheOperations):
         authority = answer_packet.authority
         additional = answer_packet.additional
         domain = answer_packet.questions[0].name.lower()
+        if domain not in self.cache:
+            self._initialize_domain(domain)
         self._insert_records(answers)
         self.cache[domain]['authority'], \
         self.cache[domain]['additional'] = map(self._insert_records,
@@ -97,7 +99,7 @@ class Dns_Cache(AbstractCacheOperations):
         for record in records:
             record.domain = record.domain.lower()
             cache_record = CacheRecord(record, time.time())
-            if not record.domain in self.cache:
+            if record.domain not in self.cache:
                 self._initialize_domain(record.domain)
             self.cache[record.domain][record.dns_type].add(cache_record)
             cache_records.add(cache_record)
@@ -109,6 +111,8 @@ class Dns_Cache(AbstractCacheOperations):
             self.cache[domain][type] = set()
 
 CR = namedtuple('CR', 'record time')
+
+
 class CacheRecord(CR):
     def __hash__(self):
         return hash(self.record)
