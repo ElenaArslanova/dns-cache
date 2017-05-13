@@ -1,17 +1,15 @@
 import socket
 import sys
-import re
-import ipaddress
-from cache import Dns_Cache
+import argparse
+from cache import DnsCache
+from itertools import zip_longest
 from multiprocessing.dummy import Pool as ThreadPool
 from select import select
 from threading import Lock
-from packets import DNS_Packet
+from packets import DNS_Packet, dns_types
 
 
-class Dns_Server:
-    IP = re.compile(r'(\d{0,3})\.(\d{0,3})\.(\d{0,3})\.(\d{0,3})')
-
+class DnsServer:
     def __init__(self, hello_word="Hello! Ready for a job"):
         self.welcome = hello_word
         self.cache = None
@@ -46,7 +44,7 @@ class Dns_Server:
 
     def set_up_cache(self, cache=None):
         if cache is None:
-            self.cache = Dns_Cache(database_name="cache using python dictionary")
+            self.cache = DnsCache(database_name="cache using python dictionary")
             # one session cache, could be replaced
         return self
 
@@ -86,19 +84,22 @@ class Dns_Server:
             cache_result, c_authority, c_additional = self.cache.process_query(question)
             if not cache_result:
                 replies = self.ask_forwarder(question)
+                print('{}, {}, {}, {}'.format(address[0], dns_types[question.type], question.name, 'forwarder'))
                 self._process_forwarder_replies(replies, query, connection, address)
                 return
             answers.extend(cache_result)
             authority.extend(c_authority)
             additional.extend(c_additional)
+            print('{}, {}, {}, {}'.format(address[0], dns_types[question.type], question.name, 'cache'))
         reply = DNS_Packet.build_reply(query, answers, authority, additional)
         connection.sendto(reply.to_raw_packet(), address)
 
     def _insert_reply_into_cache(self, reply):
         with self._lock:
-             self.cache.insert_packet_data(reply)
+            self.cache.insert_packet_data(reply)
 
-    def _without_errors(self, forwarder_reply):
+    @staticmethod
+    def _without_errors(forwarder_reply):
         return forwarder_reply.flags.rcode == DNS_Packet.RCODES['No error']
 
     def _process_forwarder_replies(self, replies, query, connection, address):
@@ -107,7 +108,6 @@ class Dns_Server:
             connection.sendto(reply.to_raw_packet(), address)  # probably with lock
             if self._without_errors(reply):
                 self._insert_reply_into_cache(reply)
-
 
     def ask_forwarder(self, query):
         results = []
@@ -129,8 +129,6 @@ class Dns_Server:
                     break
         return results
 
-
-
     def launch(self):
         self.__check_all_set_up__()
         print(self.welcome)
@@ -147,6 +145,18 @@ class Dns_Server:
                     self.client_worker(question, connection)
                     # self.pool.apply_async(self.client_worker, args=[question, connection])
 
+
+def create_parser():
+    parser = argparse.ArgumentParser(description='Caching DNS server')
+    parser.add_argument('-p', '--port', type=int, default=53, help='listening udp port')
+    parser.add_argument('-f', '--forwarder', default='8.8.8.8', help='dns forwarder[:port]')
+    return parser
+
+
 if __name__ == '__main__':
-    a = Dns_Server("Hello").set_up_address().set_up_port().set_up_forwarder("8.8.8.8")
-    a.apply_async().set_up_cache().launch()
+    parser = create_parser()
+    args = parser.parse_args()
+    port = args.port
+    params = dict(zip_longest(['forwarder', 'port'], args.forwarder.split(':'), fillvalue=port))
+    server = DnsServer('Hello').set_up_address().set_up_port(int(params['port'])).set_up_forwarder(params['forwarder'])
+    server.apply_async().set_up_cache().launch()
