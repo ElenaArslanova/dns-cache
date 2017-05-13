@@ -60,14 +60,13 @@ class Dns_Cache(AbstractCacheOperations):
                         valid_records.add(cache_record)
                 self.cache[query.name][type] = valid_records
 
-
     def process_query(self, query):
         self.update_domain_name_class(query)
         if not self.domain_cached(query):
             return [], [], []
         available_records = self.cache[query.name][query.type]
-        authority = self.cache[query.name]['authority']
-        additional = self.cache[query.name]['additional']
+        authority = self.cache[query.name]['authority'] - available_records
+        additional = self.cache[query.name]['additional'] - available_records
         if available_records:
             return map(self._extract_records, [available_records,
                                                authority,
