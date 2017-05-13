@@ -21,11 +21,9 @@ class DnsServer:
 
     def set_up_address(self, address='localhost'):
         self.address = address
-        return self
 
-    def set_up_port(self, port=53):
+    def set_up_port(self, port):
         self.port = port
-        return self
 
     def set_up_forwarder(self, forwarder):
         try:
@@ -40,18 +38,14 @@ class DnsServer:
                 self.forwarder = forwarder
         else:
             self.forwarder = forwarder
-        return self
 
     def set_up_cache(self, cache=None):
         if cache is None:
             self.cache = DnsCache(database_name="cache using python dictionary")
-            # one session cache, could be replaced
-        return self
 
     def apply_async(self, pool=None):
         if pool is None:
             self.pool = ThreadPool(processes=4)
-        return self
 
     def __check_all_set_up__(self):
         values = self.__dict__
@@ -142,8 +136,7 @@ class DnsServer:
                 except socket.error:
                     print("Couldn't receive from client")
                 else:
-                    self.client_worker(question, connection)
-                    # self.pool.apply_async(self.client_worker, args=[question, connection])
+                    self.pool.apply_async(self.client_worker, args=[question, connection])
 
 
 def create_parser():
@@ -153,10 +146,20 @@ def create_parser():
     return parser
 
 
+def set_up_server(params):
+    server = DnsServer('Hello')
+    server.set_up_address()
+    server.set_up_port(int(params['port']))
+    server.set_up_forwarder(params['forwarder'])
+    server.apply_async()
+    server.set_up_cache()
+    return server
+
+
 if __name__ == '__main__':
     parser = create_parser()
     args = parser.parse_args()
     port = args.port
     params = dict(zip_longest(['forwarder', 'port'], args.forwarder.split(':'), fillvalue=port))
-    server = DnsServer('Hello').set_up_address().set_up_port(int(params['port'])).set_up_forwarder(params['forwarder'])
-    server.apply_async().set_up_cache().launch()
+    dns_server = set_up_server(params)
+    dns_server.launch()
