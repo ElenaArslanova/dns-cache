@@ -42,7 +42,7 @@ class AbstractCacheOperations:
         pass
 
 
-class Dns_Cache(AbstractCacheOperations):
+class DnsCache(AbstractCacheOperations):
     def __init__(self, database_name):
         super().__init__(database_name)
         # simple one session implementation using pure python dictionary
