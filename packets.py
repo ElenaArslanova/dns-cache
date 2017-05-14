@@ -1,5 +1,6 @@
 import ipaddress
 import struct
+import re
 
 
 def build_domain(name):
@@ -23,9 +24,6 @@ dns_classes = {
     1: 'IN',
     255: 'ANY'
 }
-
-to_dns_types = dict((v, k) for k, v in dns_types.items())
-to_dns_classes = dict((v, k) for k, v in dns_classes.items())
 
 class DNS_Packet:
     MESSAGE_TYPE = {'QUERY': 0, 'RESPONSE': 1}
@@ -62,7 +60,6 @@ class DNS_Packet:
 
     @staticmethod
     def __convert_domain_name__(resolve_name):
-        import re
         if re.match(r'\d+\.\d+\.\d+\.\d+', resolve_name):
             return 'PTR', '.'.join(reversed(resolve_name.split('.'))) + ".IN-ADDR.ARPA."
         return 'A', resolve_name if resolve_name[-1] == '.' else resolve_name + '.'
@@ -144,13 +141,6 @@ class Query:
 
     @classmethod
     def parse(cls, raw_query, offset):
-        # pointer = offset
-        # res = []
-        # while raw_query[pointer] != 0:
-        #     count = raw_query[pointer]
-        #     res.append(cls.to_ascii(raw_query[pointer + 1:pointer + count + 1]))
-        #     pointer += count + 1
-        # name = '.'.join(res)
         name, pointer = get_domain(raw_query, offset)
         q_type, q_class = struct.unpack(">HH", raw_query[pointer: pointer + 4])
         return Query(name, q_type, q_class), pointer + 4
@@ -158,11 +148,6 @@ class Query:
     def build(self):
         return build_domain(self.name) + struct.pack(">HH", self.type,
                                                      self.q_class)
-
-    @staticmethod
-    def to_ascii(data):
-        # return ''.join(chr(elem) for elem in data)
-        return data.decode()
 
 
 class ResourceRecord:
@@ -253,27 +238,6 @@ ResourceRecord.association_functions = {
     "MX": ResourceRecord.mail_record_function,
     "SOA": ResourceRecord.soa_record_function
 }
-
-
-#
-# def get_domain(raw_data, offset):
-#     pointer, shortened_pointer = offset
-#     shortened = False
-#     res = []
-#     while raw_data[pointer] != 0:
-#         count = raw_data[pointer]
-#         pointer += 1
-#         if count & 0xC0 == 0xC0:
-#             if not shortened:
-#                 shortened_pointer += 1
-#             pointer = ((count & (~0xC0)) << 8) + raw_data[pointer]
-#             shortened = True
-#             continue
-#         res.append(raw_data[pointer: pointer + count].decode())
-#         pointer += count
-#     pointer += 1
-#     name = '.'.join(res)
-#     return name, shortened_pointer if shortened else pointer
 
 
 def get_domain(data, offset):
