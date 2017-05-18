@@ -128,7 +128,6 @@ class DnsServer:
                 read, _, _ = select([sock], [], [], 1)
                 if read:
                     raw_data = sock.recv(512)
-                    print('raw_forw', raw_data)
                     converted_pack = DNS_Packet.parse(raw_data)
                     if converted_pack.flags.TC:
                         results.append(converted_pack)
