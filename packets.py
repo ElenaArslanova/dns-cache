@@ -150,6 +150,14 @@ class Query:
         return build_domain(self.name) + struct.pack(">HH", self.type,
                                                      self.q_class)
 
+    def __hash__(self):
+        return hash((self.name, self.type, self.q_class))
+
+    def __eq__(self, other):
+        if isinstance(other, Query):
+            return (self.name, self.type, self.q_class) == (other.name, other.type, other.q_class)
+        return False
+
 
 class ResourceRecord:
     def __init__(self, domain, dns_type, dns_class, ttl, rdlength, rdata, raw_rdata=None):
