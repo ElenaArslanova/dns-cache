@@ -18,6 +18,7 @@ class DnsServer:
         self.forwarder = None
         self.pool = None
         self._lock = Lock()
+        self._unprocessed_questions = set()
 
     def set_up_address(self, address='localhost'):
         self.address = address
@@ -77,6 +78,10 @@ class DnsServer:
         """
         bin_data, address = request
         query = DNS_Packet.parse(bin_data)
+        query_questions = frozenset(query.questions)
+        if query_questions in self._unprocessed_questions:
+            return
+        self._unprocessed_questions.add(query_questions)
         answers = []
         authority = []
         additional = []
@@ -84,6 +89,8 @@ class DnsServer:
             cache_result, c_authority, c_additional = self.cache.process_query(question)
             if not cache_result:
                 replies = self.ask_forwarder(question)
+                if not replies:
+                    return
                 print('{}, {}, {}, {}'.format(address[0], dns_types[question.type], question.name, 'forwarder'))
                 self._process_forwarder_replies(replies, query, connection, address)
                 return
@@ -91,8 +98,10 @@ class DnsServer:
             authority.extend(c_authority)
             additional.extend(c_additional)
             print('{}, {}, {}, {}'.format(address[0], dns_types[question.type], question.name, 'cache'))
+            self._unprocessed_questions.remove(question)
         reply = DNS_Packet.build_reply(query, answers, authority, additional)
         connection.sendto(reply.to_raw_packet(), address)
+        self._unprocessed_questions.remove(query_questions)
 
     def _insert_reply_into_cache(self, reply):
         with self._lock:
@@ -105,7 +114,7 @@ class DnsServer:
     def _process_forwarder_replies(self, replies, query, connection, address):
         for reply in replies:
             reply.id = query.id
-            connection.sendto(reply.to_raw_packet(), address)  # probably with lock
+            connection.sendto(reply.to_raw_packet(), address)
             if self._without_errors(reply):
                 self._insert_reply_into_cache(reply)
 
@@ -119,6 +128,7 @@ class DnsServer:
                 read, _, _ = select([sock], [], [], 1)
                 if read:
                     raw_data = sock.recv(512)
+                    print('raw_forw', raw_data)
                     converted_pack = DNS_Packet.parse(raw_data)
                     if converted_pack.flags.TC:
                         results.append(converted_pack)
