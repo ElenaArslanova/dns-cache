@@ -93,12 +93,12 @@ class DnsServer:
                     return
                 print('{}, {}, {}, {}'.format(address[0], dns_types[question.type], question.name, 'forwarder'))
                 self._process_forwarder_replies(replies, query, connection, address)
+                self._unprocessed_questions.remove(query_questions)
                 return
             answers.extend(cache_result)
             authority.extend(c_authority)
             additional.extend(c_additional)
             print('{}, {}, {}, {}'.format(address[0], dns_types[question.type], question.name, 'cache'))
-            self._unprocessed_questions.remove(question)
         reply = DNS_Packet.build_reply(query, answers, authority, additional)
         connection.sendto(reply.to_raw_packet(), address)
         self._unprocessed_questions.remove(query_questions)
