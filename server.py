@@ -80,6 +80,7 @@ class DnsServer:
         query = DNS_Packet.parse(bin_data)
         query_questions = frozenset(query.questions)
         if query_questions in self._unprocessed_questions:
+            self._send_server_failure_response(query, connection, address)
             return
         self._unprocessed_questions.add(query_questions)
         answers = []
@@ -90,6 +91,7 @@ class DnsServer:
             if not cache_result:
                 replies = self.ask_forwarder(question)
                 if not replies:
+                    self._send_server_failure_response(query, connection, address)
                     return
                 print('{}, {}, {}, {}'.format(address[0], dns_types[question.type], question.name, 'forwarder'))
                 self._process_forwarder_replies(replies, query, connection, address)
@@ -102,6 +104,10 @@ class DnsServer:
         reply = DNS_Packet.build_reply(query, answers, authority, additional)
         connection.sendto(reply.to_raw_packet(), address)
         self._unprocessed_questions.remove(query_questions)
+
+    def _send_server_failure_response(self, query, connection, address):
+        failure_response = DNS_Packet.build_reply(query, [], [], [], rcode='Server failure')
+        connection.sendto(failure_response.to_raw_packet(), address)
 
     def _insert_reply_into_cache(self, reply):
         with self._lock:
