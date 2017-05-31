@@ -19,6 +19,7 @@ class DnsServer:
         self.pool = None
         self._lock = Lock()
         self._unprocessed_questions = set()
+        self._RD = 1
 
     def set_up_address(self, address='localhost'):
         self.address = address
@@ -41,6 +42,7 @@ class DnsServer:
                 self.forwarder = forwarder
         else:
             self.forwarder = forwarder
+        self._RD = 1
         return self
 
     def set_up_cache(self, cache=None):
@@ -127,7 +129,8 @@ class DnsServer:
     def ask_forwarder(self, query):
         results = []
         raw = DNS_Packet.build_request(resolve_name=query.name,
-                                       dns_type=query.type).to_raw_packet()
+                                       dns_type=query.type,
+                                       RD=self._RD).to_raw_packet()
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(raw, (self.forwarder, 53))
             while True:
@@ -135,6 +138,8 @@ class DnsServer:
                 if read:
                     raw_data = sock.recv(512)
                     converted_pack = DNS_Packet.parse(raw_data)
+                    if not converted_pack.flags.RA:
+                        self._RD = 0
                     if converted_pack.flags.TC:
                         results.append(converted_pack)
                         continue

@@ -41,13 +41,13 @@ class DNS_Packet:
         self.additional = additional
 
     @classmethod
-    def build_request(cls, resolve_name, dns_type=1, dns_class=1):
+    def build_request(cls, resolve_name, RD=0, dns_type=1, dns_class=1):
         import random
         base_type, domain = DNS_Packet.__convert_domain_name__(resolve_name)
 
         query = Query(domain, dns_type, dns_class)
         flags = Flags(DNS_Packet.MESSAGE_TYPE['QUERY'], DNS_Packet.OPCODES['QUERY'],
-                      0, 0, 0, 0, DNS_Packet.RCODES['No error'])
+                      0, 0, RD, 0, DNS_Packet.RCODES['No error'])
         return DNS_Packet(random.randint(0, 1 << 16), flags, [query], [], [], [])
 
     @classmethod
