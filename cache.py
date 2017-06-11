@@ -22,7 +22,7 @@ class AbstractCacheOperations:
         self.name = name
 
     @abc.abstractmethod
-    def domain_cached(self, query):
+    def domain_cached(self, domain):
         # just a guarantee wrapper
         pass
 
@@ -50,7 +50,7 @@ class DnsCache(AbstractCacheOperations):
 
     def update_domain_name_class(self, query):
         # cleaning records which have old ttl
-        if self.domain_cached(query):
+        if self.domain_cached(query.name):
             for type in self.cache[query.name]:
                 valid_records = set()
                 for cache_record in self.cache[query.name][type]:
@@ -61,9 +61,9 @@ class DnsCache(AbstractCacheOperations):
 
     def process_query(self, query):
         self.update_domain_name_class(query)
-        if not self.domain_cached(query):
+        if not self.domain_cached(query.name):
             return [], [], []
-        available_records, authority, additional = self._get_records(query)
+        available_records, authority, additional = self._process_query(query)
         if available_records:
             return map(self._extract_records, [available_records,
                                                authority,
@@ -83,14 +83,29 @@ class DnsCache(AbstractCacheOperations):
                 any.extend(records)
         return any
 
-    def _get_records(self, query):
+    def _process_query(self, query):
         if query.type == 255:
             return self._get_any(query.name), [], []
+        return self._get_records_considering_cname(query)
 
-        available_records = self.cache[query.name][query.type]
-        authority = self.cache[query.name]['authority'] - available_records
-        additional = self.cache[query.name]['additional'] - available_records
-        return available_records, authority, additional
+    def _get_records(self, domain, type):
+        if self.domain_cached(domain):
+            cached = self.cache[domain]
+            available_records = cached[type]
+            authority = cached['authority'] - available_records
+            additional = cached['additional'] - available_records
+            return available_records, authority, additional
+        return [], [], []
+
+    def _get_records_considering_cname(self, query):
+        records, authority, additional = [], [], []
+        for name in chain((query.name,), (cname.record.rdata for cname in self.cache[query.name][5])):
+            available_records, authority_r, additional_r = self._get_records(name, query.type)
+            records.extend(available_records)
+            authority.extend(authority_r)
+            additional.extend(additional_r)
+        records.extend(cname_record for cname_record in self.cache[query.name][5])
+        return records, authority, additional
 
     def insert_packet_data(self, answer_packet):
         answers = answer_packet.answers
@@ -104,8 +119,8 @@ class DnsCache(AbstractCacheOperations):
         self.cache[domain]['additional'] = map(self._insert_records,
                                                [authority, additional])
 
-    def domain_cached(self, query):
-        return query.name in self.cache
+    def domain_cached(self, domain):
+        return domain in self.cache
 
     def _insert_records(self, records):
         cache_records = set()
