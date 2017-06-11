@@ -55,8 +55,7 @@ class DnsCache(AbstractCacheOperations):
                 valid_records = set()
                 for cache_record in self.cache[query.name][type]:
                     time_elapsed = round(time.time() - cache_record.time)
-                    cache_record.record.ttl -= time_elapsed
-                    if cache_record.record.ttl > 0:
+                    if cache_record.record.ttl - time_elapsed > 0:
                         valid_records.add(cache_record)
                 self.cache[query.name][type] = valid_records
 
@@ -64,9 +63,7 @@ class DnsCache(AbstractCacheOperations):
         self.update_domain_name_class(query)
         if not self.domain_cached(query):
             return [], [], []
-        available_records = self.cache[query.name][query.type]
-        authority = self.cache[query.name]['authority'] - available_records
-        additional = self.cache[query.name]['additional'] - available_records
+        available_records, authority, additional = self._get_records(query)
         if available_records:
             return map(self._extract_records, [available_records,
                                                authority,
@@ -77,6 +74,23 @@ class DnsCache(AbstractCacheOperations):
     def _extract_records(cache_records):
         return sorted([record.record for record in cache_records],
                       key=lambda r: r.domain)
+
+    def _get_any(self, domain):
+        any = []
+        for type in self.cache[domain]:
+            records = self.cache[domain][type]
+            if records:
+                any.extend(records)
+        return any
+
+    def _get_records(self, query):
+        if query.type == 255:
+            return self._get_any(query.name), [], []
+
+        available_records = self.cache[query.name][query.type]
+        authority = self.cache[query.name]['authority'] - available_records
+        additional = self.cache[query.name]['additional'] - available_records
+        return available_records, authority, additional
 
     def insert_packet_data(self, answer_packet):
         answers = answer_packet.answers
@@ -100,8 +114,9 @@ class DnsCache(AbstractCacheOperations):
             cache_record = CacheRecord(record, time.time())
             if record.domain not in self.cache:
                 self._initialize_domain(record.domain)
-            self.cache[record.domain][record.dns_type].add(cache_record)
-            cache_records.add(cache_record)
+            if record.dns_type in dns_types:
+                self.cache[record.domain][record.dns_type].add(cache_record)
+                cache_records.add(cache_record)
         return cache_records
 
     def _initialize_domain(self, domain):
