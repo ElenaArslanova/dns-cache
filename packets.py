@@ -262,7 +262,15 @@ def get_domain(data, offset):
             offset = ((length & (~0xC0)) << 8) + data[offset]
             shortened = True
         elif length & 0xC0 == 0 and length > 0:
-            domain += data[offset: offset + length].decode('utf-8') + '.'
+            try:
+                domain += data[offset: offset + length].decode('ascii') + '.'
+            except UnicodeDecodeError:
+                for code in data[offset: offset + length]:
+                    if code > 127:
+                        domain += '\{}'.format(code)
+                    else:
+                        domain += chr(code)
+                domain += '.'
             offset += length
         else:
             return domain, offset_to_return if shortened else offset
