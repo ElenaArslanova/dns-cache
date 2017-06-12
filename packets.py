@@ -1,10 +1,7 @@
 import ipaddress
 import struct
+import re
 
-
-def build_domain(name):
-    return b''.join(map(lambda part: struct.pack(">B", len(part)) + part.encode('utf-8'),
-                 name.split('.')))
 
 dns_types = {
     1: 'A',
@@ -18,6 +15,7 @@ dns_types = {
     252: 'AXFR',
     255: '*'
 }
+
 
 dns_classes = {
     1: 'IN',
@@ -274,3 +272,38 @@ def get_domain(data, offset):
             offset += length
         else:
             return domain, offset_to_return if shortened else offset
+
+
+CODE = re.compile(r'\\\d+')
+
+
+def build_domain(name):
+    domain = []
+    buffer = []
+    for part in name.split('.'):
+        length = len(part)
+        if length:
+            codes = list(CODE.finditer(part))
+            prev_end = 0
+            if codes:
+                length = 0
+                for code in codes:
+                    if code.start() > prev_end:
+                        left = part[prev_end: code.start()]
+                        length += len(left)
+                        buffer.append(left.encode())
+                    prev_end = code.end()
+                    buffer.append(bytes([int(code.group()[1:])]))
+                    length += 1
+                if prev_end < len(part):
+                    left = part[prev_end:]
+                    buffer.append(left.encode())
+                    length += len(left)
+            else:
+                length = len(part)
+                buffer.append(part.encode())
+
+        domain.append(struct.pack(">B", length))
+        domain.extend(buffer)
+        buffer.clear()
+    return b''.join(domain)
